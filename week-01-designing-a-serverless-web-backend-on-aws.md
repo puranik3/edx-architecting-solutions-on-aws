@@ -57,4 +57,49 @@
     - also, once we architect we can review various choices of servies and see how to optimize further for these 3 factors
 
 
+## Selecting a Serverless Compute Service
+- Some options for compute service
+    - Check the table of various services and their use cases on this page - https://aws.amazon.com/products/compute/
+    - EC2
+    - Lightsail
+    - ECS
+    - EKS
+    - Fargate
+    - Lambda
+- EC2 could be used for lift-and-shift requirement. But it involves some management on customer's parts - in this case customer does not want to manage servers
+- Container orchestration services like ECS, EKS can run containers on EC2 (unmanaged) or Fargate (managed)
+    - Fargate is a good choice for this requirement as
+        - it is managed
+        - logs and metrics go to CloudWatch
+        - no idle instances (managed scaling)
+    - But we are _not sure if customer is interested in using containers_!
+- __Lambda is _cloud-native___ - i.e. designed to take advantage of all the services the AWS cloud has to offer!
+    - serverless (managed)
+    - logs and metrics go to CloudWatch
+    - some configurations still need to be maintained and tweaked over time
+    - some things you may still need to do to make scaling happen faster, code run faster
+    - but these operational overheads are still minimal compared to EC2
+    - When an event triggers a function, Lambda 
+        - runs the task on a micro-VM called Firecracker
+        - shuts down the VM if it idling for a period of time
+- So, which one to use?
+    - ask the customer!
+    - __customer says there aren't people skilled enough to use containers__!
+- So...Lambda is the winner
+    - orders service needs to be rewritten to a set of functions that can be invoked by Lambda
+        - but that is not much difference or much work!
+    - also __triggers for functions need to be configured__
+        - a trigger for Lambda can be
+            - SQS message being enqueued
+            - HTTP/HTTPS request from API Gateway
+            - request via ELB
+            - etc.
+- We can choose __Amazon API Gateway for the web server__ and can
+    - forward incoming HTTP/HTTPS requests for orders service endpoints
+    - handle authentiction requests
+    - handle request validation
+    - managed scalable
+    - like Lambda logs and metrics go to CloudWatch!
+
 ## Resources
+- [AWS compute services](https://aws.amazon.com/products/compute/)
