@@ -80,7 +80,7 @@
     - some things you may still need to do to make scaling happen faster, code run faster
     - but these operational overheads are still minimal compared to EC2
     - When an event triggers a function, Lambda 
-        - runs the task on a micro-VM called Firecracker
+        - runs the task on a micro-VM called Firecracker (called the `execution environment`)
         - shuts down the VM if it idling for a period of time
 - So, which one to use?
     - ask the customer!
@@ -101,5 +101,267 @@
     - managed scalable
     - like Lambda logs and metrics go to CloudWatch!
 
+## AWS Lambda Exploration
+- Create a function
+    - name it
+    - choose runtime (like java 8, .NET 6, Node 16 etc.)
+        - you can even choose a custom runtime if the off-the-shelf supported does not have what you need
+    - create an IAM role that the Lambda can assume when it executes the function
+        - this defines what services are available to the Lambda (or rather the function running on it)
+    - enable VPC if you want to communicate with a resource in a private VPC (eg. an RDS DB)
+    - add trigger
+        - triggers can be AWS services
+        - using Amazon aws/eventbridge, you can even trigger from many popular third-party SaaS services like Auth0, Datadog, Freshworks, MongoDB etc.
+        - eg. set up an API Gateway with an API to invoke the function - this creates an HTTP/REST endpoint (as you choose)
+    - code signing
+        - only approved developers publish unaltered, trusted code in your functions
+    - the function can be uploaded, defined in the code editor (`Code` tab)
+        - gets `event`, `context` as arguments
+            - event has details of payload of the request
+            - context of the execution
+        - code is stored in S3 with encryption at rest
+            - integrity checks are performed when code is used
+        - code should be __stateless__
+            - should assume no affinity to the underlying compute infrastructure
+            - local file system access, child processes cannot extend beyond the lifetime of the request
+                - 512MB of instance's own ephemeral storage is free of cost
+                - you can configure between 512MB - 10,240MB, in 1MB increments (`/tmp` directory) at a price
+                - CloudWatch can be used to monitor ephemeral storage usage!
+            - persistent state should be stored in S3, DynamoDB, RDS, EFS, or another internet-available storage service
+        - manage versions
+            - eg. a new version of a function can be used for beta testing without affecting users of the stable production version
+    - logs can be
+        - runtime logs (eg. details of invocation)
+        - application logs (that the function logs)
+    - the `Test` tab can be used to make an HTTP request for testing the execution
+    - add destination
+
+## Reading 1.2: Compute on AWS
+- before selecting any service, ensure that you are up to date on any new AWS service or feature releases
+- [High-level overview of the different AWS compute services for any worload](https://aws.amazon.com/products/compute/)
+
+### AWS Lambda
+- Lambda functions can run for up to 15 minutes
+    - __any processes that needs > 15 minutes should use other compute services on AWS__!
+- metered in 1ms increments
+- each execution environment stays active for a period of time, and then it shuts down on its own
+- managed nature makes it easier to optimize for operational efficiency and have low operational overhead
+    - Lambda manages the compute fleet, which offers a balance of memory, CPU, network, and other resources to run your code
+    - you can't log in to compute instances, customize OS etc.
+    - Lambda manages capacity, monitoring, and logging your Lambda functions
+- Lambda use cases
+    - web backends
+    - IoT backends
+    - mobile backends
+    - file or data processing
+    - parallelizing computing tasks - splitting highly complex, long-lived computations to multiple smaller tasks across many Lambda function instances
+    - stream or message processing
+- if you need to manage your own compute resources
+    - EC2
+        - You get to choose
+            - instance types
+            - OS and customize it
+            - settings for network and security
+            - the entire software stack
+        - You are responsible for
+            - provisioning capacity
+            - monitoring fleet health and performance
+            - using AZs for fault tolerance
+    - AWS Elastic Beanstalk
+        - deploy and scale apps on EC2
+        - you own and control underlying EC2 instances
+
+### Amazon API Gateway
+- in this use case we needed a way to expose the __backend Lambda function__
+- __API Gateway__ integrates with Lambda, thus providing __a way to expose the backend service without exposing to the open internet__
+- __fully managed__, making it easier for API developers to
+    - create
+    - publish
+    - maintain
+    - monitor
+    - secure
+    ...their APIs at scale
+- supports
+    - containerized worloads
+    - serverless workloads
+    - web apps
+- Features
+    - accepts and processes 1000s of concurrent API calls
+    - traffic management
+    - CORS support
+    - access control and authorization
+    - throttling
+    - monitoring
+    - API version management
+- you can create
+    - HTTP APIs are the best choice for building APIs that only require API proxy functionality - cheaper
+    - REST APIs support API proxy functionality and API management features - costlier
+    - WebSocket APIs that enable real-time two-way communication
+- tiered pricing model and cost reduces as API usage scales
+
+### Amazon EC2
+- for this customer's use case EC2 brings in operational overhead
+- here, customer was willing to rewrite the code to use Lambda
+- spiky demand - choosing a service such as Lambda minimizes idling resources during low volume times, which can be more difficult to achieve with Amazon EC2
+- hence EC2 was not chosen!
+
+### AWS container services
+- __Container management tools can be divided into three categories__
+    - __registry__ - secure place to store and manage your container images
+    - __orchestration__ - manages when and where your containers run
+    - __compute__ - flexible compute engines to power your containers
+- customer did not want to integrate this technology into their stack
+    - running a container on Amazon ECS using AWS Fargate as the compute platform would technically work
+    - it was not chosen because of customer preferences
+- __Amazon ECS__
+    - fully managed container orchestration service that you can use to deploy, manage, and scale containerized applications
+    - run container workloads in the cloud or on premises
+    - __Serverless by default with AWS Fargate__
+        - Fargate is built into Amazon ECS, and it reduces the time you need to spend on
+            - managing servers
+            - handling capacity planning (scaling as needed)
+            - figuring out how to isolate container workloads for security
+        - define your application's requirements and __select Fargate as your launch type__
+    - __Security and isolation by design__
+        - integrates with the tools you already trust for security, identity, and management and governance
+        - you can assign granular permissions for each of your containers, giving you a high level of isolation when you build your apps
+    - __Autonomous control plane operations__
+        - AWS configuration and operational best practices built-in—with no control plane, nodes, or add-ons for you to manage. It natively integrates with both AWS and third-party tools to make it easier for teams to focus on building the applications, not the environment.
+- __Amazon EKS__
+    - managed service to run Kubernetes on AWS without needing to install, operate, and maintain your own Kubernetes control plane or nodes
+    - Kubernetes is an open-source system for automating the deployment, scaling, and management of containerized applications
+    - runs and scales the Kubernetes control plane across multiple AWS AZs to ensure high availability
+    - automatically scales control plane instances based on load, detects and replaces unhealthy control plane instances, and provides automated version updates and patching for them
+    - integrated with many AWS services to provide scalability and security for your applications, including the following capabilities
+        - Amazon ECR for container images
+        - ELB for load distribution
+        - IAM for authentication
+        - VPC for isolation
+    - runs latest version of Kubernetes, so you can use all of the existing plugins and tooling from the Kubernetes community
+    - Apps that run on EKS are fully compatible with apps that run on any standard Kubernetes environment
+        - __you can migrate any standard Kubernetes application to EKS without code changes__!
+- __AWS Fargate__
+    - use with ECS to run containers without managing servers or clusters of EC2 instances
+    - reduces your need to provision, configure, or scale clusters of VMs to run containers
+    - minimizes your need to choose server types, decide when to scale your clusters, or optimize cluster packing
+    - Fargate launch type
+        - you package your app in containers
+        - specify the CPU and memory requirements
+        - define networking and IAM policies
+        - launch the application
+    - With Amazon ECS on AWS Fargate capacity providers, you can use
+        - Fargate
+        - Fargate Spot
+            - you can run __interruption-tolerant ECS tasks__ at a discounted rate
+            - runs tasks on spare compute capacity - your tasks will be interrupted with a 2-minute warning notice
+
+## Choosing an AWS Database Service
+- Some options for DB service
+    - Check the table of various services and their use cases on this page - https://aws.amazon.com/products/databases/
+    - RDS is managed
+        - 6 DB options
+        - of this Amazon Aurora is also available serverless!
+    - Dynamo DB is full managed key-value store and is also serverless!
+    - more DB options like Neptune (graph DB), key-value in-memory DB (ElastiCache etc.) etc. are available
+- we consider __Aurora Serverless__ and Dynamo DB as the 2 options
+    - Aurora in an RDBMS and supports massive scalabiliy and performance for commercial RDBMS workloads
+    - DynamoDB is also serverless and designed for scalability and performance
+    - we focus on the app's storage patterns and throughput needs (how much data you read/write per second)
+        - __provisioned mode__ - allocate storage based on estimated throughput (you allocate an upper bound)
+            - good for relatively stable number of requests
+        - __on-demand mode__ - allocate/deallocate storage on-the-go as throughput changes
+            - good for spiky access
+    - RDS Proxy to handle when many connections are made to the DB through multiple Lambdas
+        - with Aurora we need an RDS proxy
+        - This is especially needed when there is heavy traffic (like sales events)
+        - this RDS proxy is an additional piece to be managed
+        - with Dynamo DB, an RDS proxy is not needed (handling large number of connections is built-in)
+    - with Dynamo DB
+        - joins not supported
+        - model the table with secondary indexes to speed-up queries in your app
+    - orders service uses just one table. Both Aurora and Dynamo DB fit the bill, but Dynamo DB looks like a better fit for this use case as it makes the design simple, and yet effective for this use case
+- So, which one to use?
+    - ask the customer!
+    - __customer confirmed there are no complex queries, and no joins (in fact as originally stated there is only 1 table)__
+- So...Dynamo DB seems the winner (may need more thought)
+
+## Reading 1.3: Databases on AWS
+- are purpose-built
+    - each DB serice is built for specific use cases
+    - we chose DynamoDB as the customer is using it as a simple lookup table - no need for complex SQL queries or joins across tables
+    - also serverless nature of the table makes it easy to operate over time
+- __Amazon Aurora__
+    - use the code, tools, and applications for your existing MySQL and PostgreSQL DBs with Aurora
+    - includes a high-performance storage subsystem
+    - its MySQL-compatible and PostgreSQL-compatible DB engines are __customized to take advantage of that fast, distributed storage__
+    - storage grows automatically as needed
+        - Aurora cluster volume can grow to a maximum size of 128 tebibytes (TiB)
+    - automates and standardizes database clustering and replication, which is a challenging aspect of DB configuration and administration
+    - Multi AZ deployment and multi-region replication support
+- __Aurora Serverless v2__
+    - on-demand, automatic scaling configuration for Aurora
+    - automate monitoring workloads
+    - automate scaling based on application demand
+        - especially valuable for
+            - multitenant DBs
+            - distributed DBs
+            - development and test systems
+            - other environments with highly variable and unpredictable workloads
+- __Amazon RDS Proxy__
+    - __pool and share DB connections__ to improve their ability to scale
+    - helps apps handle unpredictable surges in DB traffic by limiting number of connections
+    - makes apps more resilient to DB failures by automatically connecting to a standby DB instance, while preserving connections
+    - you can also enforce IAM authentication for DBs
+    - securely store credentials in AWS Secrets Manager
+    - queues / throttles application connections that can't be served immediately from the pool of connections
+        - latencies might increase but your app can scale without failures
+    - enable RDS Proxy for most apps with no code changes
+- __Amazon DynamoDB__
+    - fully managed NoSQL DB service
+    - fast and predictable performance
+    - seamless scalability
+    - reduce need to handle
+        - hardware provisioning
+        - setup and configuration
+        - software patching
+        - replication
+        - cluster scaling
+    - offers encryption at rest
+    - Multi AZ deployment and multi-region replication support
+    - DynamoDB core components
+        - tables
+        - items
+        - attributes
+    - uses primary key to identify each item uniquely
+    - secondary indexes to provide querying flexibility
+    - use __DynamoDB Streams to capture data modification events in DynamoDB tables__
+
 ## Resources
 - [AWS compute services](https://aws.amazon.com/products/compute/)
+- [AWS Lambda FAQs](https://aws.amazon.com/lambda/faqs/)
+- [Getting started with Lambda](https://docs.aws.amazon.com/lambda/latest/dg/getting-started.html)
+- [AWS Lambda Developer Guide](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html)
+- [AWS Lambda Operator Guide](https://docs.aws.amazon.com/lambda/latest/operatorguide/intro.html)
+- [AWS Lambda Architecture and Best Practices](https://docs.aws.amazon.com/lambda/latest/operatorguide/architecture-best-practice.html)
+- [AWS Lambda - Technical Talks](https://aws.amazon.com/lambda/resources/webinars-and-talks/)
+- [AWS Lambda - Workshops & Tutorials](https://aws.amazon.com/lambda/resources/workshops-and-tutorials/)
+- [Serverless Developer Guide](https://docs.aws.amazon.com/serverless/latest/devguide/welcome.html)
+- [Amazon API Gateway](https://aws.amazon.com/api-gateway/)
+- [Amazon API gateway FAQs](https://aws.amazon.com/api-gateway/faqs/)
+- [Tutorial: Get started with Amazon EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EC2_GetStarted.html)
+- [What is Amazon EC2?](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/concepts.html)
+- [Amazon EC2 FAQs](https://aws.amazon.com/ec2/faqs/)
+- [Amazon EKS User Guide](https://docs.aws.amazon.com/eks/latest/userguide/what-is-eks.html)
+- [Containers on AWS](https://aws.amazon.com/containers/services/)
+- [Amazon ECS on AWS Fargate](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html)
+- [Amazon ECS Workshop](https://ecsworkshop.com/)
+- [YouTube channel - Containers from the Couch - Live streams and videos featuring AWS Container Services and demos](https://www.youtube.com/containersfromthecouch)
+- [AWS Cloud Databases](https://aws.amazon.com/products/databases/)
+- [AWS Cloud Databases](https://aws.amazon.com/products/databases/)
+- [Using Aurora Serverless v2](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-serverless-v2.html)
+- [Getting started with Amazon Aurora](https://aws.amazon.com/rds/aurora/getting-started/)
+- [Using Amazon RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/rds-proxy.html)
+- [What is Amazon DynamoDB?](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Introduction.html)
+- [Amazon DynamoDB FAQs](https://aws.amazon.com/dynamodb/faqs/)
+- [Example of modeling relational data in DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-modeling-nosql-B.html)
+- [Hands-on labs for DynamoDB](https://catalog.workshops.aws/dynamodb-labs/en-US/hands-on-labs)
