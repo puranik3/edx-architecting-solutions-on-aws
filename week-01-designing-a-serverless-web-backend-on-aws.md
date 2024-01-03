@@ -336,6 +336,121 @@
     - secondary indexes to provide querying flexibility
     - use __DynamoDB Streams to capture data modification events in DynamoDB tables__
 
+## Building Event-Driven Architectures
+- pub-sub model for communication (event brokering) between decoupled microservices
+- Parts
+    - __producers__ publish (create) events
+    - __event router__ ingests, filters and pushes the events to the appropriate consumers
+    - __consumers__ subscribe to and consume events as they occur
+- scale and fail services independently
+- no need to poll, filter and route events in services themselves (reducing coupling)
+- removes need for heavy coordination between services
+- decide which services can publish/subscribe to the event router
+    - also which users and resources have permission to access data
+- encrypt events both in transit and at rest
+- is push-based
+    - no polling means less network bandwidth consumption, less CPU utilization, less idle fleet capacity, and less SSL/TLS handshakes
+- __Two main types of event routers used in event-driven architectures__
+    - __Event buses__
+        - __Amazon EventBridge__
+        - serverless
+        - https://aws.amazon.com/eventbridge/
+    - __Event topics__
+        - __Amazon Simple Notification Service (SNS)__
+        - serverless
+        - https://aws.amazon.com/sns/
+    - __EventBridge is more recent and full-fledged in terms of features compared to SNS__
+        - supports lot more targets (producers and consumers) than SNS including
+            - SaaS apps
+        - supports filtering based on rules, whereas SNS supports only based on message attributes
+        - has Schema Registry which has information about title, format, validation rules for event data
+    - [AWS SQS vs SNS vs Eventbridge – When to Use What?](https://www.beabetterdev.com/2021/09/10/aws-sqs-vs-sns-vs-eventbridge/)
+    - [AWS — Difference between Amazon EventBridge and Amazon SNS](https://medium.com/awesome-cloud/aws-difference-between-amazon-eventbridge-and-amazon-sns-comparison-aws-eventbridge-vs-aws-sns-46708bf5313)
+- since our use case is simple, SNS will do
+    - SNS is cheaper and simpler
+- next question is how are we going to capture the order event that occurs when an order is received and Lambda stores it in Dynamo DB?
+    - Answer: DynamoDB streams!
+        - you can configure a DynamoDB table to trigger an event (in a stream) when a change is made
+        - in this case another Lambda function can be set uo process this stream
+        - the Lambda will publish an event to an SNS topic
+        - the mechanism of sending the message to SNS is completely decoupled from the orders service
+        - a new downstream service which may need to be invoked in future, for example, can also simply subscribe to the SNS topic
+
+## SNS Exploration
+Nothing special - took through the AWS console for creating a topic, configuring access rules, how subscriptions are made
+
+## Reading 1.4: Event-Driven Architectures on AWS
+- customer currently uses a synchronous web application to host the orders service, which is causing various issues
+- event-driven architecture uses events to invoke and communicate between decoupled services
+- sample events
+    - placing an item in a shopping cart
+- events can either
+    - carry the state (the item purchased, its price, and a delivery address)
+    - be identifiers (a notification that an order was shipped)
+- producer services and consumer services are decoupled, which means that they can be scaled, updated, and deployed independently
+
+### EventBridge vs SNS
+- You can use both EventBridge and SNS to develop event-driven apps
+    - choice depends on specific needs
+- EventBridge is used when you want to build an app that reacts to
+    - events from software as a service (SaaS) applications - integrates directly with third-party SaaS AWS Partners
+    - AWS services - ingests events from over 90 AWS services without requiring developers to create any resources in their account
+- uses a defined, JSON-based structure for events
+- select events to forward to a target by creating rules that are applied across the entire event body
+- supports over 15 AWS services as targets
+    - Lambda
+    - SQS
+    - SNS
+    - Kinesis Data Streams
+    - Kinesis Data Firehose
+- has a typical latency of about half a second
+- __SNS is used when you
+    - want to build an application that reacts to _high throughput_ or _low-latency messages___
+    - SNS provides nearly unlimited throughput
+    - use it for applications that need very high fan-out (thousands or millions of endpoints)
+- SNS messages are unstructured and can be in any format
+- SNS supports 6 services as targets
+    - Lambda
+    - SQS
+    - HTTP/S endpoints
+    - email
+    - SMS
+    - mobile push
+- typical latency of SNS is under 30 ms
+
+### Amazon EventBridge
+- serverless event bus service
+- connect your app with data from various sources
+- targets
+    - Lambda
+    - HTTP invocation endpoints
+    - event buses in other AWS accounts
+    - etc.
+- when it receives an __event__, it applies a rule to route the event to a target
+- __rules__ match events to targets based
+    - __event pattern__ - the structure of the event
+    - on a schedule
+    - eg. when an EC2 instance changes from pending to running, you can have a rule that sends the event to a Lambda function
+- all events that come to EventBridge are associated with an __event bus__
+    - __rules are tied to a single event bus__, so they can only be __applied to events on that event bus__
+    - your account has a __default event bus__, which __receives events from AWS services__
+    - you can also create __custom event buses__ to send or receive events from a different account or region
+
+## Amazon SNS
+- SNS now supports payload-based pattern message filtering (apart from the old attribute-based filtering)
+    - https://aws.amazon.com/blogs/compute/introducing-payload-based-message-filtering-for-amazon-sns/
+
+## Amazon DynamoDB Streams
+- captures a time-ordered sequence of item-level modifications in any DynamoDB table
+- stores this information in a log for up to 24 hours
+    - data older than 24 hours is susceptible to trimming (removal) at any moment
+- apps can view the log items as they appear and take action in real timew
+- you can also capture __before__ and __after__ images of the modified items
+- encryption at rest encrypts the data in the stream
+- each stream record appears exactly one time in the stream
+- DynamoDB Streams operates asynchronously
+    - so table performance is not affected if you enable a stream
+
 ## Resources
 - [AWS compute services](https://aws.amazon.com/products/compute/)
 - [AWS Lambda FAQs](https://aws.amazon.com/lambda/faqs/)
@@ -365,3 +480,20 @@
 - [Amazon DynamoDB FAQs](https://aws.amazon.com/dynamodb/faqs/)
 - [Example of modeling relational data in DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-modeling-nosql-B.html)
 - [Hands-on labs for DynamoDB](https://catalog.workshops.aws/dynamodb-labs/en-US/hands-on-labs)
+- [What is an Event-Driven Architecture?](https://aws.amazon.com/event-driven-architecture/)
+- [Amazon EventBridge](https://aws.amazon.com/eventbridge/)
+- [Amazon Simple Notification Service (SNS)](https://aws.amazon.com/sns/)
+- [AWS SQS vs SNS vs Eventbridge – When to Use What?](https://www.beabetterdev.com/2021/09/10/aws-sqs-vs-sns-vs-eventbridge/)
+- [AWS — Difference between Amazon EventBridge and Amazon SNS](https://medium.com/awesome-cloud/aws-difference-between-amazon-eventbridge-and-amazon-sns-comparison-aws-eventbridge-vs-aws-sns-46708bf5313)
+- [What is Amazon EventBridge?](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-what-is.html)
+- [Amazon EventBridge FAQs](https://aws.amazon.com/eventbridge/faqs/)
+- [Amazon EventBridge events](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-events.html)
+- [Amazon EventBridge rules](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rules.html)
+- [Amazon EventBridge event patterns](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html)
+- [Amazon EventBridge event buses](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-bus.html)
+- [Payload-based message filtering support in SNS](https://aws.amazon.com/blogs/compute/introducing-payload-based-message-filtering-for-amazon-sns/)
+- [What is Amazon SNS?](https://docs.aws.amazon.com/sns/latest/dg/welcome.html)
+- [Amazon SNS FAQs](https://aws.amazon.com/sns/faqs/)
+- [Getting started with Amazon SNS](https://docs.aws.amazon.com/sns/latest/dg/sns-getting-started.html#step-create-queue)
+- [Change data capture for DynamoDB Streams](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Streams.html)
+- [Tutorial: Process new items with DynamoDB Streams and Lambda](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Streams.Lambda.Tutorial.html)
