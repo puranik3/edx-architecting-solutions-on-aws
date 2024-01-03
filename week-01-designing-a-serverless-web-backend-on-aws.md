@@ -56,7 +56,6 @@
     - again serverless optimizes these factors in this priority!
     - also, once we architect we can review various choices of servies and see how to optimize further for these 3 factors
 
-
 ## Selecting a Serverless Compute Service
 - Some options for compute service
     - Check the table of various services and their use cases on this page - https://aws.amazon.com/products/compute/
@@ -283,7 +282,43 @@
 - So, which one to use?
     - ask the customer!
     - __customer confirmed there are no complex queries, and no joins (in fact as originally stated there is only 1 table)__
-- So...Dynamo DB seems the winner (may need more thought)
+- So...Dynamo DB is the winner (this decision may need more thought in general)
+
+## DynamoDB Exploration
+- Creating a table
+    - name
+    - parition key
+        - primary key
+        - mandatory
+    - sort key
+        - if parition key is not unique, you can make it unique by tagging along the sort key as well!
+        - optional
+        - allows you to sort or search among all items sharing the same partition key
+    - secondary indexes
+        - local
+        - global
+    - capacity mode
+        - provisioned
+            - best to configure with auto-scaling, else you end up over-allocating DB resource
+            - free-tier eligible
+            - you can reserve capacity and this brings down costs to an extent
+            - predictable workloads
+            - gradual ramp up of traffic and not spiky
+        - on-demand
+            - apart from overcmong above disadvantages, this can be used to track DB traffic through CloudWatch, and then right-size and provision capacity
+    - Read capacity measured in Read Capacity Units (RCU)
+        - default 5, but you can change
+    - Write capacity measured in Write Capacity Units (WCU)
+        - default 5, but you can change
+    - These units determine throughput
+    - For more information about RCU and WCU - https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html
+    - table classes
+        - Standard
+        - Standard-IA (Infrequent Access)
+    - __Monitor__ tab is used to configure and manage CloudWatch metrics
+    - __Exports and streams__ - to configure export to S3, Kinesis and Dynamo DB streams
+    - __Global tables__ tab is used to create replicas in other regions
+    
 
 ## Reading 1.3: Databases on AWS
 - are purpose-built
@@ -392,6 +427,8 @@ Nothing special - took through the AWS console for creating a topic, configuring
 ### EventBridge vs SNS
 - You can use both EventBridge and SNS to develop event-driven apps
     - choice depends on specific needs
+- EventBridge can have multiple source applications as producers simultaneously generating events, SNS can have only 1 producer
+    - __Note__: This needs to be better understood (@todo)
 - EventBridge is used when you want to build an app that reacts to
     - events from software as a service (SaaS) applications - integrates directly with third-party SaaS AWS Partners
     - AWS services - ingests events from over 90 AWS services without requiring developers to create any resources in their account
@@ -437,6 +474,8 @@ Nothing special - took through the AWS console for creating a topic, configuring
     - you can also create __custom event buses__ to send or receive events from a different account or region
 
 ## Amazon SNS
+- Again, fans out messages to multiple consumers
+- Works with a push mechanism
 - SNS now supports payload-based pattern message filtering (apart from the old attribute-based filtering)
     - https://aws.amazon.com/blogs/compute/introducing-payload-based-message-filtering-for-amazon-sns/
 
@@ -450,6 +489,159 @@ Nothing special - took through the AWS console for creating a topic, configuring
 - each stream record appears exactly one time in the stream
 - DynamoDB Streams operates asynchronously
     - so table performance is not affected if you enable a stream
+
+## Decoupling AWS Solutions
+- response to placing orders is right now slow
+    - customer wants to speed it up
+- instead of the the usual 3-tier architecture flow, re-architect the app using a __storage first__ model
+    - as soon as an order request is received, store the order data received somewhere, and respond to the user
+- Use the superpowers of API Gateway to achieve this
+    - supports data __transformation__ and __validation__
+        - __we can move such logic from the compute layer to the API Gateway!__
+    - integrates with AWS services
+        - store in Dynamo DB
+        - send message to SQS queue, or publish it to SNS
+        - no need for a Lambda function to do these tasks
+- Two options
+    - if there is no business logic except simple transformation and validation, we can get rid of the Lambda entirely, and use API Gateway to store the order details in Dynamo DB
+    - else, we can have API Gateway publish the order details to an SQS queue, and the Lambda can read the message asynchronously from the queue, and process and store the order like before in DynamoDB
+    - both options are resilient (orders are not dropped), scale well and do so automatically (all are serverless building services!)
+- So, which one to use?
+    - ask the customer!
+    - __customer confirmed there is complex business logic at work__
+- So...SQS option is the winner
+
+## SQS Exploration
+- SQS works by polling whereas SNS works with a push mechanism
+- Unlike SNS, the message is retained in the queue until subscriber reads it
+    - in SNS, it is sent as the event occurs, and the subscriber is reponsible to receive and maintain it if needed till it can process it
+- __Queue configurations__
+    - __queue type__
+        - Similar to SNS, you have __Standard__ and __FIFO queues__
+    - __retention period__
+        - message retained for this time, post which an unread message is dropped
+        - default is 4 days
+        - max configurable is 14 days
+    - __message size__
+        - < 256KB
+        - for larger ones, store the message somewhere else (eg. database), and provide a reference
+    - __receive wait time__
+        - the polling duration
+        - specify a  between 0 - 20 seconds
+        - default is 0 seconds (which indicates short polling)
+            - this is inefficient if you have infrequent messages
+        - prefer larger values
+    - __visibility timeout__
+        - the length of time that a message received from the queue by one consumer will not be visible to another consumer!
+            - default is 30 seconds
+        - this gives a chance for a consumer to process and delete the message (if the use case is such that it is to be processed by only 1 consumer) within the timeout period, when other consumers should not processs it
+            - set the timeout to the maximum time you expect the consumer to take to process and delete the message
+    - __resource (access) policy__
+        - set who can send / receive messages
+    - __delivery delay__
+        - the amount of time to delay before SQS delivers a message that is added to the queue (__SQS delay queues__)
+    - __content-based deduplication__
+        - SQS can automatically create deduplication IDs based on the body of the message
+    - you can also subscribe the queue to an SNS topic
+    - you can also set if this SQS queue should trigger a Lamba function
+    - set up CloudWatch monitoring
+    - supports __Dead-Letter Queues (DLQ)__
+        - other queues (source queues) can target for messages that can't be processed (consumed) successfully
+        - useful for debugging as you can isolate unconsumed messages to determine why their processing didn't succeed
+
+## Reading 1.5: Decoupling Solutions on AWS
+- loosely coupled architecture minimizes bottlenecks caused by synchronous communication, latency, and I/O operations
+- SQS and Lambda are used to implement asynchronous communication between different services
+- consider this pattern if
+    - You want to create loosely coupled architecture
+    - All operations don't need to be completed in a single transaction, and some operations can be asynchronous
+    - the downstream system can't handle the incoming transactions per second (TPS) rate
+    - the messages can be written to the queue and processed based on the availability of resources
+- A __disadvantage of this pattern is that the actions of business transaction are synchronous__
+    - even though the calling system receives a response, some part of the transaction might still continue to be processed by downstream systems
+- [Patterns for integrating microservices](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-integrating-microservices/integrating-patterns.html)
+- [Building storage-first serverless apps with HTTP APIs service integrations](https://aws.amazon.com/blogs/compute/building-storage-first-applications-with-http-apis-service-integrations/)
+- __Long polling benefits__
+    - Reduces empty responses by letting Amazon SQS wait until a message is available in a queue before it sends a response.
+    - Reduces false empty responses by querying all—instead of a subset of—Amazon SQS servers
+    - Returns messages as soon as they become available
+
+## Week Wrap-Up: Taking this Architecture to the Next Level
+- __DynamoDB Accelerator (DAX)__
+    - caching layer for DynamoDB
+    - ensure you don't have DB hits for same query when repeated
+    - you introduce it if needed (current performance is not good enough)
+        - remember, it comes with a cost!
+        - do some A/B testing - with DAX/without DAX!
+- __AWS Lambda Power tuning library__
+    - you can specify memory and CPU for your Lambdas
+    - increasing resources may sometimes help save costs!
+        - Lambdas are charged based on time they run - although we may deploy more resources (costlier per resource), but compute time may reduce, helping us save costs overall
+    - this library helps determine the optimum resources for your workloads!
+- __AWS Lambda Layers__
+    - code that can be reused across multiple Lambda functions
+    - eg. common libraries
+        - you can create a Lambda layer for it and reference the layer through another Lambda function
+        - __updates to only the library means updating ONLY that layer.__ neat!
+        - __can speed up deployments as libraries do not need to be part of deployment__
+- AWS Lambda also has a feature where objects shared between invocations can actually be created outside of the Lambda function execution, and reused everytime it runs
+    - performant code!
+- __AWS Lambda Powertools__
+    - suite of utilitiees for Lambda functions
+    - helps tracing, X Ray, custom metrics
+
+## Reading 1.6: Architecture Optimizations for Week 1
+- __Caching for Amazon DynamoDB by using Amazon DynamoDB Accelerator (DAX)__
+    - fully managed, highly available, in-memory cache for DynamoDB
+    - up to a 100-times performance improvement
+        — from milliseconds to microseconds
+    - developers don't need to manage
+        - cache invalidation
+        - data population
+        - cluster management
+    - no need to modify the application logic because DAX is compatible with existing DynamoDB API calls
+- __AWS Lambda Power Tuning__
+    - open-source tool that helps you visualize and fine-tune the memory or power configuration of Lambda functions in a data-driven way
+    - is a language-agnostic state machine that's powered by __AWS Step Functions__ and is easy to deploy and fast to execute
+        - to use it you provide a Lambda function Amazon Resource Name (ARN) as input
+        - it then invokes that function with multiple power configurations (from 128 MB to 10 GB—you decide which values)
+        - it analyzes all the execution logs and suggests the best power configuration to minimize cost or maximize performance
+    - supports three optimization strategies
+        - cost
+        - speed
+        - balanced
+    - __input function will run in your AWS account!__
+        - it will perform HTTP requests, SDK calls, cold starts, and so on
+        - also supports cross-Region invocations, and you can enable parallel execution to generate results in a few seconds
+        - generates a visualization of average cost and speed for each power configuration.
+- __AWS Lambda Powertools__
+    - suite of utilities for AWS Lambda functions __makes it easier to adopt best practices__ such as
+        - tracing
+        - structured logging
+        - custom metrics
+        - idempotency
+        - batching
+        - etc.
+- __AWS Lambda execution environment reuse__
+    - move certain initialization tasks in your code so they are outside the handler
+        - can be reused across invocations
+    - improves the performance of your function
+    - example tasks
+        - initialize SDK clients and database connections outside of the function handler
+        - cache static assets locally in the /tmp directory
+            - subsequent invocations that are processed by the same instance of your function can reuse these resources
+            - also saves cost by reducing function run time
+    - to avoid data leaks across invocations, __don't use the execution environment to store__
+        - user data
+        - events
+        - other sensitive data
+
+## Exercise 1 Walkthrough
+- creates a PoC of the entire solution
+
+## Challenge: Build a Proof of Concept
+- Exercise 1. Architecting Solutions: Building a Proof of Concept for a Serverless Solution
+- https://aws-tc-largeobjects.s3.us-west-2.amazonaws.com/DEV-AWS-MO-Architecting/exercise-1-serverless.html
 
 ## Resources
 - [AWS compute services](https://aws.amazon.com/products/compute/)
@@ -480,6 +672,7 @@ Nothing special - took through the AWS console for creating a topic, configuring
 - [Amazon DynamoDB FAQs](https://aws.amazon.com/dynamodb/faqs/)
 - [Example of modeling relational data in DynamoDB](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-modeling-nosql-B.html)
 - [Hands-on labs for DynamoDB](https://catalog.workshops.aws/dynamodb-labs/en-US/hands-on-labs)
+- [Units for Read/Write capacity RCU and WCU](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html)
 - [What is an Event-Driven Architecture?](https://aws.amazon.com/event-driven-architecture/)
 - [Amazon EventBridge](https://aws.amazon.com/eventbridge/)
 - [Amazon Simple Notification Service (SNS)](https://aws.amazon.com/sns/)
@@ -497,3 +690,14 @@ Nothing special - took through the AWS console for creating a topic, configuring
 - [Getting started with Amazon SNS](https://docs.aws.amazon.com/sns/latest/dg/sns-getting-started.html#step-create-queue)
 - [Change data capture for DynamoDB Streams](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Streams.html)
 - [Tutorial: Process new items with DynamoDB Streams and Lambda](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Streams.Lambda.Tutorial.html)
+[Patterns for integrating microservices](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-integrating-microservices/integrating-patterns.html)
+- [Building storage-first serverless apps with HTTP APIs service integrations](https://aws.amazon.com/blogs/compute/building-storage-first-applications-with-http-apis-service-integrations/)
+- [What is Amazon Simple Queue Service?](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html)
+- [Amazon SQS FAQs](https://aws.amazon.com/sqs/faqs/)
+- [Using AWS Lambda with Amazon SQS](https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html)
+- [AWS Lambda Power Tuning](https://github.com/alexcasalboni/aws-lambda-power-tuning)
+- [AWS Lambda Powertools (For TypeScript)](https://docs.powertools.aws.dev/lambda/typescript/latest/)
+- [Best practices for working with AWS Lambda](https://docs.aws.amazon.com/lambda/latest/dg/best-practices.html)
+- [Building well-architected serverless applications: Optimizing application costs](https://aws.amazon.com/blogs/compute/building-well-architected-serverless-applications-optimizing-application-costs/)
+- [Serverless Applications Lens - AWS Well-Architected Framework](https://docs.aws.amazon.com/wellarchitected/latest/serverless-applications-lens/welcome.html)
+- [Exercise 1. Architecting Solutions: Building a Proof of Concept for a Serverless Solution](https://aws-tc-largeobjects.s3.us-west-2.amazonaws.com/DEV-AWS-MO-Architecting/exercise-1-serverless.html)
