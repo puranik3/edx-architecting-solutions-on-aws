@@ -1,9 +1,8 @@
 # Week 2 - Designing a serverless data analytics solution on AWS
 
 ## Week 2 Introduction
-Tells something about the customer and their product
-    - restaurant product
-    - need help on data ingestion, processing and visualization
+- restaurant product
+- need help on data ingestion, processing and visualization
 
 ## Customer #2: Use Case and Requirements
 - customer call to understand current architecture and requirements
