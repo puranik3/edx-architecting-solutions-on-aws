@@ -9,3 +9,4 @@ This repository has my notes from the [__AWS: Architecting Solutions on AWS__](h
 - [Week 01 - Designing a serverless web backend on AWS](./week-01-designing-a-serverless-web-backend-on-aws.md)
 - [Week 02 - Designing a serverless data analytics solution on AWS](./week-02-designing-a-serverless-data-analytics-solution-on-aws.md)
 - [Week 03 - Designing a hybrid solution for container based workloads on AWS](./week-03-designing-a-hybrid-solution-for-container-based-workloads-on-aws.md)
+- [Week 04 - Designing a solution following account governance and management best practices](./week-04-designing-a-solution-following-account-governance-and-management-best-practices.md)

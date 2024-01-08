@@ -566,6 +566,83 @@
         - AWS Storage Gateway volumes
         - VMware workloads on premises, on Amazon Outposts, and in VMware Cloud on AWS
 
+## Customer #3: Solution Overview
+- container registry
+    - ECR or Docker Hub can be used
+
+## Week Wrap-Up: Taking this Architecture to the Next Level
+- Along with Direct Connect have VPN for failover
+- Can enable Storage Auto-scaling on RDS
+- Cross-region RDS
+    - use DMS for continuous replication from primary region to secondary
+- Cross-region read replicas
+    - PostgreSQL on RDS support it
+- Secondary AWS region for similar infrastructure (multi-regions)
+    - Need IaC
+    - to save costs you don't need the entire infrastructure
+        - you can have a scaled-down version of the EC2 fleet
+- Enabling S3 lifecycle policies (intelligent tiering) and S3 cross-region replication
+- EC2 fleet needs scaling set up
+    - usually this is done with EC2 auto-scaling
+    - but, ECS has it own scaling mechanism as well
+        - so we need to consider this to set up auto-scaling
+
+## Reading 3.6: Architecture Optimizations for Week 3
+- __Disaster Recovery (DR)__
+- The __DR strategies__ that are available to you within AWS
+    - range from the __low cost and low complexity of making backups__ to __more complex strategies that use multiple active Regions__
+    - classified as __active/passive strategies__ - use an active site (such as an AWS Region) to host the workload and serve traffic. The passive site (such as a different AWS Region) is used for recovery
+        - The passive site does not actively serve traffic until a failover event is triggered
+- __DR Strategies__
+    - __Backup and restore__
+        - suitable approach for mitigating against data loss or corruption
+        - mitigate against a regional disaster by replicating data to other AWS Regions, or to mitigate a lack of redundancy for workloads that are deployed to a single AZ
+        - use __IaC__ to also replicate __infrastructure__, __configuration__, and __application code__
+            - __AWS CloudFormation__, __AWS Cloud Development Kit (AWS CDK)__ can be used to redeploy __infrastructure__
+            - __AWS CodePipeline__ to automate the redeployment of your __application code__ and __configurations__
+        - core infrastructure is anot always available - provision resources only after the disaster!
+    - __Pilot light__
+        - you replicate your data from one Region to another
+        - provision a copy of your core workload infrastructure
+            - resources that are needed to support data replication and backup — such as __DBs and object storage, are always on__
+            - __other elements (such as application servers) are loaded with application code and configurations, but are turned off__
+            - unlike the backup and restore approach, your __core infrastructure is always available__
+    - __Warm standby__
+        - provision a scaled down, but fully functional copy of your production environment in another Region
+        - extends the pilot-light concept and decreases the time to recovery because your workload is always-on in another Region
+    - __Multi-site active/active__
+        - run your workload simultaneously in multiple Regions as part of __either a multi-site active/active strategy__ or a __hot standby active/passive strategy__
+            - __multi-site active/active approach__ serves traffic from all Regions where it's deployed
+                - most complex and most costly
+                - it can reduce your recovery time to near zero, with the correct technology choices and implementation
+                - data corruption might still need to rely on backups, which usually results in a non-zero recovery point
+            - __hot standby approach__ serves traffic from only a single Region, and the other Regions are used only for DR
+                - uses an active/passive configuration
+                - most customers find it active/active approach more useful in practice
+- __AWS Direct Connect with AWS VPN for failover__
+    - the customer can consider using Amazon Site-to-Site VPN as a failover for AWS Direct Connect so that the connection is redundant
+- __Automatic scaling for containers__
+    - when using ECS, we need to ourselves think about scaling both their underlying EC2 cluster and the containers
+    - __Scaling the cluster using _ECS cluster auto scaling___
+        - ECS can manage the scaling of EC2 instances that are registered to the cluster, based on the load that your tasks put on your cluster
+        - performed by an __ECS ASG capacity provider__ that has managed scaling turned on
+        - ECS creates 2 custom Amazon CloudWatch metrics, and a target tracking scaling policy that attaches to your ASG
+    - __Scaling the containers__
+        - ability to increase or decrease the desired count of tasks in your Amazon ECS service automatically
+        - ECS uses the __Application Auto Scaling service__ to provide this functionality
+        - you can optionally configure ECS to automatically scale (up/down) its desired count of tasks in response to CloudWatch alarms
+        - ECS Service Auto Scaling supports the following types of scaling policies
+            - __Target tracking scaling policies (Recommended)__
+                - Increase or decrease the number of tasks that your service runs, based on a target value for a specific metric
+                - This scaling approach is similar to the way that your thermostat maintains the temperature of your home. You select the temperature, and the thermostat manages the temperature
+            - __Step scaling policies__
+                - Increase or decrease the number of tasks that your service runs, based on a set of scaling adjustments, which are also known as step adjustments
+                - These adjustments vary based on the size of the alarm breach
+- __Automatic scaling for Amazon RDS__
+    - when storage autoscaling is enabled, RDS can automatically scales up your storage when it detects that you are running out of space
+- __Amazon S3 Intelligent-Tiering__
+    - automatically moving data to the most cost-effective access tier when access patterns change
+
 ## Resources
 - [Network-to-Amazon VPC connectivity options](https://docs.aws.amazon.com/whitepapers/latest/aws-vpc-connectivity-options/network-to-amazon-vpc-connectivity-options.html)
 - [What is AWS Direct Connect?](https://docs.aws.amazon.com/directconnect/latest/UserGuide/Welcome.html)
@@ -598,4 +675,13 @@
 - [AWS Management and Governance Tools Workshop: AWS Systems Manager](https://mng.workshop.aws/ssm.html)
 - [What is AWS Systems Manager?](https://docs.aws.amazon.com/systems-manager/latest/userguide/what-is-systems-manager.html)
 - [What is AWS Backup?](https://docs.aws.amazon.com/aws-backup/latest/devguide/whatisbackup.html)
+- [Amazon Machine Images (AMIs)](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AMIs.html)
+- [AWS CodePipeline](https://aws.amazon.com/codepipeline/)
+- [Disaster Recovery of Workloads on AWS: Recovery in the Cloud](https://docs.aws.amazon.com/whitepapers/latest/disaster-recovery-workloads-on-aws/disaster-recovery-workloads-on-aws.html)
+- [How do I configure Direct Connect and VPN failover with Transit Gateway?](https://repost.aws/knowledge-center/dx-configure-dx-and-vpn-failover-tgw)
+- [Amazon ECS cluster Auto Scaling](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/cluster-auto-scaling.html)
+- [Amazon ECS Workshop: Deploy ECS Cluster Auto Scaling](https://ecsworkshop.com/capacity_providers/ec2/)
+- [Service auto scaling](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service-auto-scaling.html)
+- [Managing capacity automatically with Amazon RDS storage autoscaling](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PIOPS.StorageTypes.html#USER_PIOPS.Autoscaling)
+- [Amazon S3 Intelligent-Tiering storage class](https://aws.amazon.com/s3/storage-classes/intelligent-tiering/)
 - []()
