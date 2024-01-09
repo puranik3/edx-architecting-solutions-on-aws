@@ -206,14 +206,29 @@ By using multiple AWS accounts to help isolate and manage your business applicat
     - A principal can be an AWS account root user, an IAM user, or a role
 
 ## Organizing Your Accounts Together Using OUs (Organizational Units)
+- __AWS Organization__
+    - earlier the service was called __Consolidated Billing__
 - a managed service that helps organize accounts
+- you create an Organization from a primary AWS account
+- then define __Organizational Units (OUs)__
+- OUs can be multi-level (have other OUs), and have
+    - other AWS accounts
+    - other OUs
+- Define __Service Control Policies (SCPs)__
+    - enable central administration over the services available within the accounts in the organization
+- Demo summary
+    - A __Shared services account__ creates and __maintains the Organization__
+        - defines OUs, SCPs etc.
+    - A __Developer account__ for developers to use
+        - creates and maintains an __IAM role for developers__
+        - I am assuming that devs will log into their respective accounts and assume this role from the Developer account (??)
 
 ## Resources
 - [Establishing Your Cloud Foundation on AWS](https://docs.aws.amazon.com/whitepapers/latest/establishing-your-cloud-foundation-on-aws/welcome.html)
 - [AWS Well-Architected](https://aws.amazon.com/architecture/well-architected/)
 - [Organizing Your AWS Environment Using Multiple Accounts](https://docs.aws.amazon.com/whitepapers/latest/organizing-your-aws-environment/organizing-your-aws-environment.html)
 - [Roles terms and concepts](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_terms-and-concepts.html)
-- []()
+- [AWS Organizations](https://aws.amazon.com/organizations/)
 - []()
 - []()
 - []()
